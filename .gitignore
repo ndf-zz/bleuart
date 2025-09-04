@@ -1,55 +1,47 @@
-# Prerequisites
-*.d
+# ESP32
+*.old
+sdkconfig
+secure_boot_signing_key.pem
+/build
+/log
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+# vim
+*.swp
 
-# Linker output
-*.ilk
-*.map
-*.exp
+# For PCBs designed using KiCad: https://www.kicad.org/
+# Format documentation: https://kicad.org/help/file-formats/
 
-# Precompiled Headers
-*.gch
-*.pch
+# Temporary files
+*.000
+*.bak
+*.bck
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-backups
+*-cache*
+*-bak
+*-bak*
+*~
+~*
+_autosave-*
+\#auto_saved_files\#
+*.tmp
+*-save.pro
+*-save.kicad_pcb
+fp-info-cache
+~*.lck
+\#auto_saved_files#
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
+# Netlist files (exported from Eeschema)
+*.net
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
+# Autorouter files (exported from Pcbnew)
+*.dsn
+*.ses
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+# Exported BOM files
+*.xml
+*.csv
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+# Local project settings
+*.kicad_prl

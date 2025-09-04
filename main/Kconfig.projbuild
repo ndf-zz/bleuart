@@ -1,0 +1,48 @@
+menu "BLEUART Configuration"
+
+    config BLEUART_BAUD
+        int "UART communication speed"
+        range 1200 115200
+        default 19200
+        help
+            UART communication speed.
+
+    config BLEUART_DNAME
+        string "Initial device name (dname)"
+        default "bleuart"
+        help
+            BLE device name on first boot.
+
+    config BLEUART_CNAME
+        string "Initial location identifier (cname)"
+        default "000000"
+        help
+            Unit identification string 
+
+    config BLEUART_APPEARANCE
+        hex "Appearance ID"
+        range 0x0 0xffff
+        default 0x0740
+        help
+            BLE appearance ID, default: Motorized device 0x0740
+
+    config BLEUART_MID
+        hex "BLE maufacturer ID"
+        range 0x0 0xffff
+        default 0xffff
+        help
+            Manufacturer ID for advanced BLE advertisement, default 0xffff
+
+    config BLEUART_FOTA_URL
+        string "FOTA URL"
+        default ""
+        help
+            Firmware update base URL
+
+    config BLEUART_FOTA_AGENT
+        string "FOTA User agent"
+        default "blueart/1.0"
+        help
+            User agent string sent with firwmare update request
+
+endmenu
