@@ -7,8 +7,9 @@ ESP32 BLE to RS232 bridge
 	BLE  <->  UART  <-- RX (RS232)
 	                --> TX (RS232)
 
-Provides a low-tech RS232 UART via BLE
-write and notify under a single custom GATT service
+Using an ESP32-WROOM-32E module, BLEUART provides
+a low-tech BLE to RS232 UART bridge. Data is transferred
+via write and notify under a single custom GATT service
 with ID 11e6b0a4-99c7-4647-956b-8a57cb5907d9.
 
 Advertises device "location" (CNAME) via
@@ -20,7 +21,7 @@ manufacturer data. Initial bonding PIN is 0.
 UUID | Function | Type | Actions
 --- | --- | --- | ---
 0000b0a4-99c7-4647-956b-8a57cb5907d9 | Pin | uint32 (0-999999) | write
-0001b0a4-99c7-4647-956b-8a57cb5907d9 | UART RX | bytes | read/notify
+0001b0a4-99c7-4647-956b-8a57cb5907d9 | UART RX | bytes | notify
 0010b0a4-99c7-4647-956b-8a57cb5907d9 | UART TX | bytes | write
 0100b0a4-99c7-4647-956b-8a57cb5907d9 | CNAME "Location" | bytes | read/write
 1000b0a4-99c7-4647-956b-8a57cb5907d9 | DNAME "Device Name" | bytes | write
@@ -30,14 +31,17 @@ f074b0a4-99c7-4647-956b-8a57cb5907d9 | FOTA | bytes | write
 
 ## Known Issues/Limitations
 
-   - LE security is circumvented by use of fixed pairing pin. Todo: OOB.
+   - Secure boot V1 is used only as a fancy CRC for OTA updates.
+     Todo: Move to V2.
+   - Re-flashable bootloader needs to be booted once and then re-flashed
+     to correct the re-flashable stage 2 digest. Todo: Move to V2 and or
+     one-time flash.
+   - LE security is circumvented through use of fixed pairing pin. Todo: OOB.
    - Private addrs do not yet work as expected. Todo: Investigate 
      implementation of RPA 0x2ac9.
    - RS232 line driver/receiver is always on, even when device cannot
-     receive data due to light sleep. Todo: Use GPIO to switch power
-     to line driver.
-   - Nimble stack occasionally flakes out, suspect crystal/timer
-     or memory issue.
+     receive data due to light sleep. Todo: Use GPIO
+     to switch power to line driver.
    - Test pads GPIO13/15 are inaccessible and floating. Todo:
      Add pull-ups and relocate pads with nearby ground pad for
      factory reset option.
@@ -45,9 +49,6 @@ f074b0a4-99c7-4647-956b-8a57cb5907d9 | FOTA | bytes | write
      encrypted flash, encrypted OTA transport.
    - App rollback not supported. Todo: Debug OTA partition
      errors in bootloader and check ota rollback tools.
-   - Serial data stream naively communicated by GATT characteristics,
-     it is assumed that connected devices will manage stream
-     only when connected. Todo: investigate BLE service 0x1101.
 
 
 ## FOTA
@@ -72,9 +73,11 @@ Update file requested:
    - Install ESP-IDF & run export
    - Set target
    - Create secure boot signing key if required
-   - Run burnin.sh
+   - Run burnin.sh, reboot board and then run reburn.sh
 
 	$ . ../esp-idf/export.sh
 	$ idf.py set-target esp32
 	$ idf.py secure-generate-signing-key secure_boot_signing_key.pem
 	$ ./burnin.sh
+	$ ./reburn.sh
+

@@ -19,3 +19,4 @@ idf.py bootloader
 espefuse.py burn_key secure_boot_v1 build/bootloader/secure-bootloader-key-256.bin
 esptool.py --chip esp32 --before=default_reset --after=no_reset write_flash --flash_mode dio --flash_freq 40m --flash_size 4MB 0x1000 build/bootloader/bootloader.bin
 idf.py flash monitor
+echo Re-flash bootloader to correct re-flashable digest
