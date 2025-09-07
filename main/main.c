@@ -25,7 +25,7 @@
 #include "services/gatt/ble_svc_gatt.h"
 
 // prototypes
-void ble_store_config_init(void);  // not in esp header
+void ble_store_config_init(void);  // not in esp hdr
 static int gatt_access(uint16_t conn_handle, uint16_t attr_handle,
 		     struct ble_gatt_access_ctxt *ctxt, void *arg);
 static void wifi_sta_do_disconnect(void);
@@ -48,11 +48,13 @@ static void wifi_sta_do_disconnect(void);
 #define BLEUART_PKEY "pin"  // NVS key for pairing pin
 #define BLEUART_WIFITRY 8  // WIFI connect attempts
 #define BLEUART_WIFIMS 5000  // WIFI connect timeout
-#define BLEUART_RFLAG (BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_READ_ENC \
-	| BLE_GATT_CHR_F_READ_AUTHEN) //  | BLE_GATT_CHR_F_READ_AUTHOR)
-#define BLEUART_WFLAG (BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC \
-	| BLE_GATT_CHR_F_WRITE_AUTHEN) //  | BLE_GATT_CHR_F_WRITE_AUTHOR)
+#define BLEUART_REFLAG (BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN)
+#define BLEUART_RFLAG (BLE_GATT_CHR_F_READ | BLEUART_REFLAG)
+#define BLEUART_WEFLAG (BLE_GATT_CHR_F_READ_ENC | BLE_GATT_CHR_F_READ_AUTHEN)
+#define BLEUART_WFLAG (BLE_GATT_CHR_F_WRITE | BLEUART_WEFLAG)
 #define BLEUART_KEYFLAG (BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID)
+#define BLEUART_NEFLAG (BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC)
+#define BLEUART_NFLAG (BLE_GATT_CHR_F_NOTIFY | BLEUART_NEFLAG)
 
 // task notifcation flags
 #define EVT_RESET 0  // stack reset
@@ -99,11 +101,11 @@ static const ble_uuid128_t rx_uuid = BLE_UUID128_INIT(
 	0x47, 0x46, 0xc7, 0x99, 0xa4, 0xb0, 0x01, 0x00
 );
 static uint8_t rx[BLEUART_BLEN];
-static int rx_len;
 static uint16_t rx_handle;
 static uint16_t rx_conn_handle;
 static bool rx_conn = false;
 static bool rx_ind = false;
+
 
 // UART "TX" 0x0010...
 static const ble_uuid128_t tx_uuid = BLE_UUID128_INIT(
@@ -154,7 +156,7 @@ static const struct ble_gatt_svc_def gatt_svcs[] = {
 		},
 		{.uuid = &rx_uuid.u,
 		 .access_cb = gatt_access,
-		 .flags = BLEUART_RFLAG | BLE_GATT_CHR_F_NOTIFY,
+		 .flags = BLEUART_NFLAG,
 		 .val_handle = &rx_handle
 		},
 		{.uuid = &tx_uuid.u,
@@ -193,7 +195,7 @@ static void save_name(const char *key, char *val, size_t len)
 {
 	nvs_handle_t nvsh;
 	esp_err_t rc = nvs_open(TAG, NVS_READWRITE, &nvsh);
-	ESP_LOGE(TAG, "nvs open=%d", rc);
+	ESP_LOGI(TAG, "sn: open %d", rc);
 	if (rc == ESP_OK) {
 		rc = nvs_set_blob(nvsh, key, val, len);
 		nvs_commit(nvsh);
@@ -222,11 +224,7 @@ static int gatt_access(uint16_t conn_handle, uint16_t attr_handle,
 	ESP_LOGI(TAG,"ga: %d,%d", attr_handle, ctxt->op);
 	switch (ctxt->op) {
 	case BLE_GATT_ACCESS_OP_READ_CHR:
-		if (attr_handle == rx_handle) {
-			rc = os_mbuf_append(ctxt->om, &rx[0], rx_len);
-			ESP_LOGI(TAG,"rx: X>B %d %d", rx_len, rc);
-			return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-		} else if (attr_handle == cname_handle) {
+		if (attr_handle == cname_handle) {
 			rc = os_mbuf_append(ctxt->om, &cname[0], BLEUART_CLEN);
 			return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 		} else if (attr_handle == fwrev_handle) {
@@ -290,6 +288,7 @@ static int gatt_access(uint16_t conn_handle, uint16_t attr_handle,
 	default:
 		break;
 	}
+	ESP_LOGI(TAG, "ga: unlikely");
 	return BLE_ATT_ERR_UNLIKELY;
 }
 
@@ -302,6 +301,9 @@ void subscribe_cb(struct ble_gap_event *event)
 		if (rx_ind) {
 			esp_pm_lock_acquire(sleep_lock);
 			ESP_LOGI(TAG, "ls: a");
+		} else {
+			esp_pm_lock_release(sleep_lock);
+			ESP_LOGI(TAG, "ls: r");
 		}
 	}
 }
@@ -339,13 +341,6 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 		ESP_LOGW(TAG, "ce: %d", event->connect.status);
 		ble_gap_conn_find(event->connect.conn_handle, &desc);
 		log_conn(&desc);
-		//struct ble_gap_upd_params params = {
-			//.itvl_min = desc.conn_itvl,
-			//.itvl_max = desc.conn_itvl,
-			//.latency = 64,
-			//.supervision_timeout = desc.supervision_timeout
-		//};
-		//ble_gap_update_params(event->connect.conn_handle, &params);
 		xTaskNotify(main_task, EVT_CONN, eSetBits);
 		break;
 	case BLE_GAP_EVENT_DISCONNECT:
@@ -446,7 +441,7 @@ static void start_advertising(void)
 	adv_params.itvl_min = BLE_GAP_ADV_FAST_INTERVAL2_MIN;
 	adv_params.itvl_max = BLE_GAP_ADV_FAST_INTERVAL2_MAX;
 	ble_gap_adv_start(own_addr_type, NULL, BLEUART_ADVMS, &adv_params,
-			       gap_event, NULL);
+				gap_event, NULL);
 	xTaskNotify(main_task, EVT_ADV_START, eSetBits);
 }
 
@@ -471,24 +466,34 @@ static void ble_host(void *param)
 	nimble_port_run();  // does not return in this case
 }
 
+static void rx_notify(const void *buf, uint16_t len)
+{
+	struct os_mbuf *mb = ble_hs_mbuf_from_flat(buf, len);
+	if (mb != NULL) {
+		ble_gatts_notify_custom(rx_conn_handle, rx_handle, mb);
+		xTaskNotifyWait(0, ULONG_MAX, NULL, portMAX_DELAY);
+		// ignore result of notify for now
+	} else {
+		ESP_LOGE(TAG, "rx: mem");
+	}
+}
+
 static void read_uart(void)
 {
 	size_t avail = 0;
-	uint32_t nv;
 
 	uart_get_buffered_data_len(BLEUART_PORT, &avail);
 	ESP_LOGI(TAG,"av: %d", avail);
 	if (avail) {
-		// pull all available data out of uart
+		// pull as much out of uart as will fit in rx buffer
 		if (avail > BLEUART_BLEN) {
 			avail = BLEUART_BLEN;
 		}
-		rx_len = uart_read_bytes(BLEUART_PORT, &rx[0],
-			    avail, portMAX_DELAY);
+		uint16_t rx_len = uart_read_bytes(BLEUART_PORT, &rx[0],
+						avail, portMAX_DELAY);
 		ESP_LOGI(TAG, "rx: U>X %d", rx_len);
 		if (rx_len && rx_ind && rx_conn) {
-			ble_gatts_notify(rx_conn_handle, rx_handle);
-			xTaskNotifyWait(0, ULONG_MAX, &nv, portMAX_DELAY);
+			rx_notify(&rx[0], rx_len);
 		}
 	}
 }
@@ -524,7 +529,7 @@ static void uart_rx(void *arg)
 static bool own_netif(const char *prefix, esp_netif_t *netif)
 {
 	return strncmp(prefix, esp_netif_get_desc(netif),
-				 strlen(prefix) - 1) == 0;
+			strlen(prefix) - 1) == 0;
 }
 
 static void on_wifi_disconnect(void *arg, esp_event_base_t event_base,
