@@ -2,15 +2,17 @@
 #
 # configure blueart device
 #
-#  usage: bleu-cfg [-h] [-p PIN] [-c CNAME] [-f CNAME] [-a ADDR] [-i]
+# usage: bleu-cfg [-h] [-p PIN] [-c CNAME] [-f CNAME] [-a ADDR] [-i]
+#                 [-o SSID,PSK]
 #
-#  options:
-#    -h, --help          show this help message and exit
-#    -p, --pin PIN       Update bonding pin (0-999999)
-#    -c, --cname CNAME   Update device location (CNAME)
-#    -f, --filter CNAME  Filter on location (CNAME)
-#    -a, --addr ADDR     Connect to BLE device at ADDR
-#    -i, --init          Replace device serial number
+# options:
+#   -h, --help          show this help message and exit
+#   -p, --pin PIN       Update bonding pin (0-999999)
+#   -c, --cname CNAME   Update device location (CNAME)
+#   -f, --filter CNAME  Filter on location (CNAME)
+#   -a, --addr ADDR     Connect to BLE device at ADDR
+#   -i, --init          Replace device serial number
+#   -o, --ota SSID,PSK  Trigger OTA update via SSID,PSK and exit
 #
 # save discovered bleuart devices, matched on manufacturer ID
 # or address, to blue-cfg.csv
@@ -40,6 +42,7 @@ gatt = {
     'fwver': '2a26',
     'pin': '0000b0a4-99c7-4647-956b-8a57cb5907d9',
     'cname': '0100b0a4-99c7-4647-956b-8a57cb5907d9',
+    'fota': 'f07ab0a4-99c7-4647-956b-8a57cb5907d9',
 }
 
 logging.basicConfig(level=logging.INFO)
@@ -113,7 +116,7 @@ def save_db(data):
                    '' if len(data) == 1 else 's', DBFILENAME)
 
 
-async def read_and_update(db, d, serialno, pin, cname):
+async def read_and_update(db, d, serialno, pin, cname, ota):
     """Read current values out of device and update if required"""
     if d.address not in db:
         db[d.address] = {
@@ -151,13 +154,17 @@ async def read_and_update(db, d, serialno, pin, cname):
                 _log.debug('%s Update CNAME rc=%r', d.address, rc)
                 dbr['cname'] = cname.decode('utf-8', 'replace')
             _res['rc'] = 0
+
+            if ota is not None:
+                _log.info('%s request OTA oupdate via %s', d.address, ota[0])
+                freq = '\0'.join(ota).encode('utf-8')
+                rc = await c.write_gatt_char(gatt['fota'], freq, True)
             _log.debug('%s Disconnect', d.address)
             await c.disconnect()
         except * EOFError:
             if _res['rc'] != 0 and not _res['msg']:
                 _res['msg'].append('Error connecting to device')
             _log.debug('%s EOF', d.address)
-            pass
         except * Exception as e:
             for pe in e.exceptions:
                 _log.error('%s %s: %s', d.address, pe.__class__.__name__, pe)
@@ -190,6 +197,11 @@ async def main():
                         '--init',
                         action='store_true',
                         help='Replace device serial number')
+    parser.add_argument('-o',
+                        '--ota',
+                        default=None,
+                        metavar='SSID,PSK',
+                        help='Trigger OTA update via SSID,PSK and exit')
     args = parser.parse_args()
     pin = None
     if args.pin is not None:
@@ -220,11 +232,16 @@ async def main():
             pin = INITPIN
     _log.debug('Args: pin=%r, cname=%r, filter=%r, address=%r, init=%r', pin,
                cname, cfilter, args.addr, args.init)
+    ota = None
+    if args.ota is not None:
+        ssid, psk = args.ota.split(',', 1)
+        ota = (ssid, psk)
+
     db = load_db()
     try:
         d = await connect(address=args.addr, cname=cfilter)
         if d is not None:
-            await read_and_update(db, d, serialno, pin, cname)
+            await read_and_update(db, d, serialno, pin, cname, ota)
         else:
             _res['rc'] = -2
             _res['msg'].append('BLEUART not found')
