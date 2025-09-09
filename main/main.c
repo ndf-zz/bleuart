@@ -55,6 +55,10 @@ static void wifi_sta_do_disconnect(void);
 #define BLEUART_KEYFLAG (BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID)
 #define BLEUART_NEFLAG (BLE_GATT_CHR_F_NOTIFY_INDICATE_ENC)
 #define BLEUART_NFLAG (BLE_GATT_CHR_F_NOTIFY | BLEUART_NEFLAG)
+#define BLEUART_ITVLMIN 30  // min conn interval ~37ms (set after conn est)
+#define BLEUART_ITVLMAX 40  // max conn interval ~50ms
+#define BLEUART_LATENCY 16  // allow max 16 skipped conn intervals
+#define BLEUART_STIMEOUT 200  // conn supervisor timeout ~2s
 
 // task notifcation flags
 #define EVT_RESET 0  // stack reset
@@ -63,7 +67,6 @@ static void wifi_sta_do_disconnect(void);
 #define EVT_CONN (0x1<<2)  // connection established
 #define EVT_ADV_END (0x1<<3)  // adv ended
 #define EVT_FOTA (0x1<<4)  // request FOTA
-#define EVT_REBOOT (0x1<<7)  // request reboot
 
 // globals
 static const char *TAG = "BU";  // log and netif ID
@@ -81,7 +84,7 @@ static const char *ipv6_addr_types_to_str[6] = {
 	"?", "G", "LL", "S", "U", "46"
 };
 
-// BLEUART service ID
+// BLEUART service UUID
 static const ble_uuid128_t svc_uuid = BLE_UUID128_INIT(
 	0xd9, 0x07, 0x59, 0xcb, 0x57, 0x8a, 0x6b, 0x95,
 	0x47, 0x46, 0xc7, 0x99, 0xa4, 0xb0, 0xe6, 0x11
@@ -341,6 +344,15 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 		ESP_LOGW(TAG, "ce: %d", event->connect.status);
 		ble_gap_conn_find(event->connect.conn_handle, &desc);
 		log_conn(&desc);
+		// update latency and supervision timeout
+		struct ble_gap_upd_params params = {
+			.itvl_min = BLEUART_ITVLMIN ,
+			.itvl_max = BLEUART_ITVLMAX,
+			.latency = BLEUART_LATENCY,
+			.supervision_timeout = BLEUART_STIMEOUT,
+		};
+		rc = ble_gap_update_params(event->connect.conn_handle, &params);
+		ESP_LOGI(TAG, "ce: up = %d", rc);
 		xTaskNotify(main_task, EVT_CONN, eSetBits);
 		break;
 	case BLE_GAP_EVENT_DISCONNECT:
@@ -434,6 +446,9 @@ static void start_advertising(void)
 	rsp_fields.device_addr_is_present = 1;
 	rsp_fields.adv_itvl = BLE_GAP_ADV_FAST_INTERVAL2_MIN;
 	rsp_fields.adv_itvl_is_present = 1;
+	//rsp_fields.uuids128 = &svc_uuid;
+	//rsp_fields.num_uuids128 = 1;
+	//rsp_fields.uuids128_is_complete = 1;
 	ble_gap_adv_rsp_set_fields(&rsp_fields);
 
 	adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;

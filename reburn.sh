@@ -6,7 +6,7 @@
 #   - security key matches current build dir
 #   - no flash encryption
 #   - factory app + 2 OTA partitions
-#   - secure boot (reflashable)
+#   - secure boot V1 (reflashable)
 set -e
 if [ -n "${ESP_IDF_VERSION}" ] ; then
   echo "IDF ${ESP_IDF_VERSION} detected"
