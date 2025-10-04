@@ -2,12 +2,13 @@
 #
 # configure blueart device
 #
-# usage: bleu-cfg [-h] [-p PIN] [-c CNAME] [-f CNAME] [-a ADDR] [-i]
+# usage: bleu-cfg [-h] [-p PIN] [-d DNAME] [-c CNAME] [-f CNAME] [-a ADDR] [-i]
 #                 [-o SSID,PSK]
 #
 # options:
 #   -h, --help          show this help message and exit
 #   -p, --pin PIN       Update bonding pin (0-999999)
+#   -d, --dname DNAME   Update device name (DNAME)
 #   -c, --cname CNAME   Update device location (CNAME)
 #   -f, --filter CNAME  Filter on location (CNAME)
 #   -a, --addr ADDR     Connect to BLE device at ADDR
@@ -30,6 +31,7 @@ import csv
 DBFILENAME = 'bleu-cfg.csv'
 MID = 0xffff
 INITPIN = 0
+DLEN = 30
 CLEN = 6
 
 _res = {
@@ -38,7 +40,8 @@ _res = {
 }
 
 gatt = {
-    'dname': '2a00',
+    'dnamer': '2a00',
+    'dnamew': '1000b0a4-99c7-4647-956b-8a57cb5907d9',
     'fwver': '2a26',
     'pin': '0000b0a4-99c7-4647-956b-8a57cb5907d9',
     'cname': '0100b0a4-99c7-4647-956b-8a57cb5907d9',
@@ -65,9 +68,9 @@ async def connect(address=None, cname=None):
                     mfc = a.manufacturer_data[MID]
                     if cname is not None:
                         if mfc and mfc.startswith(cname):
-                            _log.debug('Found: %s %s: %s', d.address, d.name,
-                                       mfc)
-                        return d
+                            _log.debug('Found %s: %s %s: %s', cname, d.address,
+                                       d.name, mfc)
+                            return d
                     else:
                         _log.debug('Found: %s %s: %s', d.address, d.name, mfc)
                         return d
@@ -116,7 +119,7 @@ def save_db(data):
                    '' if len(data) == 1 else 's', DBFILENAME)
 
 
-async def read_and_update(db, d, serialno, pin, cname, ota):
+async def read_and_update(db, d, serialno, pin, cname, ota, newdname):
     """Read current values out of device and update if required"""
     if d.address not in db:
         db[d.address] = {
@@ -133,7 +136,7 @@ async def read_and_update(db, d, serialno, pin, cname, ota):
             dbr = db[d.address]
             if serialno is not None:
                 dbr['serial'] = serialno
-            dname = await c.read_gatt_char(gatt['dname'])
+            dname = await c.read_gatt_char(gatt['dnamer'])
             dbr['dname'] = dname.decode('utf-8', 'replace')
             _log.debug('%s Connect %r', d.address, bytes(dname))
             origcname = await c.read_gatt_char(gatt['cname'])
@@ -153,6 +156,11 @@ async def read_and_update(db, d, serialno, pin, cname, ota):
                 rc = await c.write_gatt_char(gatt['cname'], cname, True)
                 _log.debug('%s Update CNAME rc=%r', d.address, rc)
                 dbr['cname'] = cname.decode('utf-8', 'replace')
+            if newdname is not None:
+                _log.info('%s Update DNAME: %r', d.address, newdname)
+                rc = await c.write_gatt_char(gatt['dnamew'], newdname, True)
+                _log.debug('%s Update DNAME rc=%r', d.address, rc)
+                dbr['dname'] = newdname.decode('utf-8', 'replace')
             _res['rc'] = 0
 
             if ota is not None:
@@ -178,6 +186,11 @@ async def main():
                         default=None,
                         metavar='PIN',
                         help='Update bonding pin (0-999999)')
+    parser.add_argument('-d',
+                        '--dname',
+                        default=None,
+                        metavar='DNAME',
+                        help='Update device name (DNAME)')
     parser.add_argument('-c',
                         '--cname',
                         default=None,
@@ -210,12 +223,18 @@ async def main():
             pin = max(0, min(999999, newpin))
         except Exception as e:
             _log.warning('Ignored invalid pin')
+    newdname = None
+    if args.dname is not None:
+        newdname = args.dname.encode('utf-8', 'replace')
+        if len(newdname) > DLEN:
+            _log.warning('DNAME truncated')
+            newdname = newdname[0:DLEN]
     cname = None
     if args.cname is not None:
         cname = args.cname.encode('utf-8', 'replace')
         if len(cname) > CLEN:
             _log.warning('CNAME truncated')
-            cname = cname[0:6]
+            cname = cname[0:CLEN]
     cfilter = None
     if args.filter is not None:
         cfilter = args.filter.encode('utf-8', 'replace')
@@ -230,8 +249,8 @@ async def main():
             cname = serialno.encode('utf-8', 'replace')
         if pin is None:
             pin = INITPIN
-    _log.debug('Args: pin=%r, cname=%r, filter=%r, address=%r, init=%r', pin,
-               cname, cfilter, args.addr, args.init)
+    _log.debug('pin=%r, dname=%r, cname=%r, filter=%r, address=%r, init=%r',
+               pin, newdname, cname, cfilter, args.addr, args.init)
     ota = None
     if args.ota is not None:
         ssid, psk = args.ota.split(',', 1)
@@ -241,7 +260,7 @@ async def main():
     try:
         d = await connect(address=args.addr, cname=cfilter)
         if d is not None:
-            await read_and_update(db, d, serialno, pin, cname, ota)
+            await read_and_update(db, d, serialno, pin, cname, ota, newdname)
         else:
             _res['rc'] = -2
             _res['msg'].append('BLEUART not found')
